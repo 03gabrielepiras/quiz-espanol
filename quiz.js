@@ -315,7 +315,7 @@ function buildMCQ_Mucho(level){
   ]);
 
   return qMCQ(
-    "Completa con la forma correcta de “mucho":",
+    "Completa con la forma correcta de “mucho”:",
     choices,
     choices.indexOf(correct),
     `Plural: ${o.g==="f" ? "muchas" : "muchos"} + ${o.p}.`,
