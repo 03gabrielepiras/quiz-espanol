@@ -29,13 +29,27 @@ function norm(s){
     .trim()
     .toLowerCase()
     .replace(/\s+/g," ")
-    .replace(/[.?!]+$/,"" )
+    .replace(/[.?!]+$/," ")
+    .trim()
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+}
+
+function escapeReg(s){
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function escapeHtml(str){
+  return (str ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
 }
 
 const $ = (id) => document.getElementById(id);
 
-/* -------------------- Data pools -------------------- */
+/* -------------------- Data pools (accent-less for matching) -------------------- */
 const rooms = [
   "la cocina","el salon","el comedor","el dormitorio","el bano","el pasillo",
   "la habitacion","el estudio","la terraza","el balcon","el garaje","el jardin"
@@ -94,58 +108,164 @@ const placePreps = [
 
 const deictics = ["aqui","ahi","alli"];
 
-/* -------------------- Question models --------------------
-MCQ: {type:"mcq", prompt, choices[], answerIndex, explanation, tag}
-OPEN: {type:"open", prompt, validator(userText)->{ok:boolean, correct:string, hint:string}, sample:string, tag}
------------------------------------------------------------ */
+/* -------------------- Glossary ES -> IT (starter) -------------------- */
+const GLOSS = {
+  // core
+  "hay": "c'e / ci sono",
+  "mucho": "molto",
+  "mucha": "molta",
+  "muchos": "molti",
+  "muchas": "molte",
+  "aqui": "qui",
+  "ahi": "li (vicino a te)",
+  "alli": "la (lontano)",
 
-function qMCQ(prompt, choices, answerIndex, explanation, tag){
-  return { type:"mcq", prompt, choices, answerIndex, explanation, tag };
+  // preposizioni/frasi
+  "encima de": "sopra (a) / sopra di",
+  "debajo de": "sotto (a) / sotto di",
+  "delante de": "davanti a",
+  "detras de": "dietro a",
+  "al lado de": "accanto a",
+  "dentro de": "dentro (a)",
+  "fuera de": "fuori da",
+  "entre": "tra / fra",
+
+  // casa
+  "casa": "casa",
+  "piso": "appartamento",
+  "habitacion": "stanza / camera",
+  "cocina": "cucina",
+  "bano": "bagno",
+  "salon": "salotto",
+  "comedor": "sala da pranzo",
+  "dormitorio": "camera da letto",
+  "jardin": "giardino",
+
+  // verbi
+  "tener": "avere",
+  "tiene": "ha",
+  "ser": "essere",
+  "es": "e'",
+  "llamarse": "chiamarsi",
+  "se llama": "si chiama"
+};
+
+// Auto-aggiunta: oggetti, stanze, familiari
+for(const r of rooms){
+  const key = norm(r.replace(/^el |^la /,""));
+  if(!GLOSS[key]){
+    // traduzioni base (non perfette, ma utili per prima superiore)
+    const map = {
+      "cocina":"cucina","salon":"salotto","comedor":"sala da pranzo","dormitorio":"camera da letto",
+      "bano":"bagno","pasillo":"corridoio","habitacion":"stanza","estudio":"studio",
+      "terraza":"terrazza","balcon":"balcone","garaje":"garage","jardin":"giardino"
+    };
+    if(map[key]) GLOSS[key] = map[key];
+  }
+}
+for(const o of objects){
+  const key = norm(o.s.replace(/^un |^una /,""));
+  const map = {
+    "mesa":"tavolo","silla":"sedia","sofa":"divano","cama":"letto","armario":"armadio",
+    "lampara":"lampada","espejo":"specchio","nevera":"frigorifero","horno":"forno",
+    "ducha":"doccia","lavabo":"lavandino","television":"televisione","ordenador":"computer",
+    "libro":"libro","ventana":"finestra","puerta":"porta","alfombra":"tappeto",
+    "estanteria":"scaffale","cuadro":"quadro","planta":"pianta"
+  };
+  if(map[key] && !GLOSS[key]) GLOSS[key] = map[key];
+}
+for(const f of family){
+  const key = norm(f.sing.replace(/^mi /,""));
+  const map = {
+    "madre":"madre","padre":"padre","hermano":"fratello","hermana":"sorella",
+    "abuelo":"nonno","abuela":"nonna","tio":"zio","tia":"zia","primo":"cugino","prima":"cugina"
+  };
+  if(map[key] && !GLOSS[key]) GLOSS[key] = map[key];
 }
 
-function qOPEN(prompt, validator, sample, tag){
-  return { type:"open", prompt, validator, sample, tag };
+const PHRASES = Object.keys(GLOSS).filter(k => k.includes(" ")).sort((a,b)=>b.length-a.length);
+
+function wrapGloss(text){
+  let html = escapeHtml(text);
+
+  // 1) frasi (es: "al lado de")
+  for(const phrase of PHRASES){
+    const re = new RegExp(`\\b${escapeReg(phrase)}\\b`, "gi");
+    html = html.replace(re, (m) => {
+      const key = norm(phrase);
+      const it = GLOSS[key];
+      if(!it) return escapeHtml(m);
+      return `<span class="gloss-word" data-es="${escapeHtml(m)}" data-key="${escapeHtml(key)}">${escapeHtml(m)}</span>`;
+    });
+  }
+
+  // 2) parole singole
+  html = html.replace(/\\b([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)\\b/g, (m) => {
+    const key = norm(m);
+    if(!GLOSS[key]) return m;
+    return `<span class="gloss-word" data-es="${escapeHtml(m)}" data-key="${escapeHtml(key)}">${escapeHtml(m)}</span>`;
+  });
+
+  return html;
 }
 
-/* -------------------- Grammar helpers for OPEN -------------------- */
+function showGlossTooltip(x, y, esText, key){
+  const tip = $("glossTooltip");
+  $("glossEs").textContent = `ES: ${esText}`;
+  $("glossIt").textContent = `IT: ${GLOSS[key]}`;
+
+  tip.style.left = `${Math.min(x, window.innerWidth - 340)}px`;
+  tip.style.top  = `${Math.min(y + 14, window.innerHeight - 140)}px`;
+  tip.classList.remove("hidden");
+}
+
+function hideGlossTooltip(){
+  $("glossTooltip").classList.add("hidden");
+}
+
+/* -------------------- Grammar hints (for OPEN feedback and note) -------------------- */
 function hintRule(ruleId, details){
   const base = {
-    HAY_EXISTE: "Usa **hay** per dire che una cosa esiste in un luogo: “Hay una mesa en la cocina.”",
-    SER_PROF: "Professione: usa **ser** (Es médico / Es profesora).",
-    TENER_EDAD: "Età: usa **tener** (Tiene 15 años). Non “es 15 años”.",
-    MUCHO_ACUERDO: "“Mucho” concorda in genere e numero: **mucho/mucha/muchos/muchas**.",
-    DEICTIC: "Qui/lì: **aquí** (vicino), **ahí** (lì vicino a te), **allí** (là lontano).",
-    PREP_DE: "Con preposizioni come encima/debajo/delante/detrás/al lado/dentro/fuera serve **de**: “encima de…”.",
-    ENTRE: "Con **entre** non mettere “de”: “entre la mesa y la silla”."
+    HAY_EXISTE: "Usa HAY per dire che una cosa esiste in un luogo: 'Hay una mesa en la cocina.'",
+    SER_PROF: "Professione: usa SER (Es medico / Es profesora).",
+    TENER_EDAD: "Eta: usa TENER (Tiene 15 anos). Non 'es 15 anos'.",
+    MUCHO_ACUERDO: "'Mucho' concorda: mucho/mucha/muchos/muchas (genere+numero).",
+    DEICTIC: "Qui/li: aqui (qui), ahi (li vicino a te), alli (la lontano).",
+    PREP_DE: "Con encima/debajo/delante/detras/al lado/dentro/fuera serve 'de': encima de...",
+    ENTRE: "Con ENTRE non mettere 'de': 'entre la mesa y la silla'."
   }[ruleId] || "Controlla la struttura della frase.";
 
   return details ? `${base} ${details}` : base;
 }
 
-function escapeReg(s){
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/* -------------------- Question models -------------------- */
+function qMCQ(prompt, choices, answerIndex, explanation, tag, grammar){
+  return { type:"mcq", prompt, choices, answerIndex, explanation, tag, grammar };
+}
+function qOPEN(prompt, validator, sample, tag, grammar){
+  return { type:"open", prompt, validator, sample, tag, grammar };
 }
 
+/* -------------------- OPEN validators -------------------- */
 function makeValidator_HayInRoom(o, room){
   const oN = norm(o.s);
   const roomN = norm(room);
-
   const re1 = new RegExp(`^hay ${escapeReg(oN)} en ${escapeReg(roomN)}$`);
   const re2 = new RegExp(`^en ${escapeReg(roomN)} hay ${escapeReg(oN)}$`);
 
   return (userText) => {
     const u = norm(userText);
 
-    if(/\best(a|an)\b/.test(u) && u.includes(" hay ")){
-      return { ok:false, correct:`Hay ${o.s} en ${room}.`, hint: hintRule("HAY_EXISTE", "Evita “está hay…”.") };
+    if(/\\best(a|an)\\b/.test(u) && u.includes(" hay ")){
+      return { ok:false, correct:`Hay ${o.s} en ${room}.`, hint: hintRule("HAY_EXISTE", "Evita 'esta hay...'.") };
     }
     if(u.startsWith("esta ") || u.startsWith("estan ")){
-      return { ok:false, correct:`Hay ${o.s} en ${room}.`, hint: hintRule("HAY_EXISTE", "“Está” indica posizione; qui chiediamo esistenza.") };
+      return { ok:false, correct:`Hay ${o.s} en ${room}.`, hint: hintRule("HAY_EXISTE", "Qui chiediamo esistenza, non posizione.") };
     }
 
     const ok = re1.test(u) || re2.test(u);
     return ok
-      ? { ok:true, correct:`Hay ${o.s} en ${room}.`, hint:"✅ Struttura corretta." }
+      ? { ok:true, correct:`Hay ${o.s} en ${room}.`, hint:"OK: struttura corretta." }
       : { ok:false, correct:`Hay ${o.s} en ${room}.`, hint: hintRule("HAY_EXISTE") };
   };
 }
@@ -155,24 +275,25 @@ function makeValidator_MuchoPlural(obj, room){
   const nounPlural = norm(obj.p);
   const correctMucho = (obj.g === "f") ? "muchas" : "muchos";
 
-  const re = new RegExp(`^(hay )?${correctMucho} ${escapeReg(nounPlural)} en ${escapeReg(roomN)}$`);
-  const re2 = new RegExp(`^en ${escapeReg(roomN)} (hay )?${correctMucho} ${escapeReg(nounPlural)}$`);
+  const re1 = new RegExp(`^hay ${escapeReg(correctMucho)} ${escapeReg(nounPlural)} en ${escapeReg(roomN)}$`);
+  const re2 = new RegExp(`^en ${escapeReg(roomN)} hay ${escapeReg(correctMucho)} ${escapeReg(nounPlural)}$`);
 
   return (userText) => {
-    const full = norm(userText);
+    const u = norm(userText);
 
-    const hasWrong = /\bmucho(s)?\b|\bmucha(s)?\b/.test(full) && !full.includes(`${correctMucho} ${nounPlural}`);
-    if(hasWrong){
+    const hasSomeMucho = /\\bmucho(s)?\\b|\\bmucha(s)?\\b/.test(u);
+    const okMucho = u.includes(`${correctMucho} ${nounPlural}`);
+    if(hasSomeMucho && !okMucho){
       return {
         ok:false,
         correct:`Hay ${correctMucho} ${obj.p} en ${room}.`,
-        hint: hintRule("MUCHO_ACUERDO", `Qui: **${correctMucho} ${obj.p}**.`)
+        hint: hintRule("MUCHO_ACUERDO", `Qui: ${correctMucho} ${obj.p}.`)
       };
     }
 
-    const ok = re.test(full) || re2.test(full);
+    const ok = re1.test(u) || re2.test(u);
     return ok
-      ? { ok:true, correct:`Hay ${correctMucho} ${obj.p} en ${room}.`, hint:"✅ Concordanza corretta." }
+      ? { ok:true, correct:`Hay ${correctMucho} ${obj.p} en ${room}.`, hint:"OK: concordanza corretta." }
       : { ok:false, correct:`Hay ${correctMucho} ${obj.p} en ${room}.`, hint: hintRule("MUCHO_ACUERDO") };
   };
 }
@@ -182,16 +303,15 @@ function makeValidator_DeicticHay(deic, obj, room){
   const oN = norm(obj.s);
   const roomN = norm(room);
 
-  const re = new RegExp(`^${escapeReg(dN)} hay ${escapeReg(oN)} en ${escapeReg(roomN)}$`);
+  const re1 = new RegExp(`^${escapeReg(dN)} hay ${escapeReg(oN)} en ${escapeReg(roomN)}$`);
   const re2 = new RegExp(`^en ${escapeReg(roomN)} ${escapeReg(dN)} hay ${escapeReg(oN)}$`);
 
   return (userText) => {
     const u = norm(userText);
-
-    const ok = re.test(u) || re2.test(u);
+    const ok = re1.test(u) || re2.test(u);
     return ok
-      ? { ok:true, correct:`${cap(deic)} hay ${obj.s} en ${room}.`, hint:"✅ Uso corretto." }
-      : { ok:false, correct:`${cap(deic)} hay ${obj.s} en ${room}.`, hint: hintRule("DEICTIC", `Qui serve **${deic}** + “hay”.`) };
+      ? { ok:true, correct:`${cap(deic)} hay ${obj.s} en ${room}.`, hint:"OK: uso corretto." }
+      : { ok:false, correct:`${cap(deic)} hay ${obj.s} en ${room}.`, hint: hintRule("DEICTIC", `Qui serve '${deic}' + hay.`) };
   };
 }
 
@@ -202,43 +322,31 @@ function makeValidator_PrepLocation(prep, obj1, obj2, room){
   const roomN = norm(room);
 
   let correct;
-  let okRegexes = [];
 
   if(prep.k === "entre"){
-    correct = `Hay ${obj1.s} entre ${obj2.s} y ${pick(objects).s} en ${room}.`;
+    correct = `Hay ${obj1.s} entre ${obj2.s} y una silla en ${room}.`;
     const re = new RegExp(`^hay ${escapeReg(o1N)} entre ${escapeReg(o2N)} y .+ en ${escapeReg(roomN)}$`);
-    okRegexes.push(re);
-  } else {
-    correct = `Hay ${obj1.s} ${prep.phrase} ${obj2.s} en ${room}.`;
-    const re1 = new RegExp(`^hay ${escapeReg(o1N)} ${escapeReg(pN)} ${escapeReg(o2N)} en ${escapeReg(roomN)}$`);
-    okRegexes.push(re1);
-
-    const phraseNoDe = pN.replace(/\s+de$/," ").trim();
-    const reNoDe = new RegExp(`^hay ${escapeReg(o1N)} ${escapeReg(phraseNoDe)} ${escapeReg(o2N)} en ${escapeReg(roomN)}$`);
-    okRegexes.push(reNoDe);
+    return (userText) => {
+      const u = norm(userText);
+      return re.test(u)
+        ? { ok:true, correct, hint:"OK: estructura con entre ... y ..." }
+        : { ok:false, correct, hint: hintRule("ENTRE") };
+    };
   }
+
+  correct = `Hay ${obj1.s} ${prep.phrase} ${obj2.s} en ${room}.`;
+  const reCorrect = new RegExp(`^hay ${escapeReg(o1N)} ${escapeReg(pN)} ${escapeReg(o2N)} en ${escapeReg(roomN)}$`);
+  const phraseNoDe = pN.replace(/\\s+de$/,"").trim();
+  const reNoDe = new RegExp(`^hay ${escapeReg(o1N)} ${escapeReg(phraseNoDe)} ${escapeReg(o2N)} en ${escapeReg(roomN)}$`);
 
   return (userText) => {
     const u = norm(userText);
-
-    if(prep.k === "entre"){
-      const ok = okRegexes[0].test(u);
-      return ok
-        ? { ok:true, correct, hint:"✅ Struttura con “entre … y …” corretta." }
-        : { ok:false, correct, hint: hintRule("ENTRE", "Struttura: “Hay X entre A y B en …”.") };
+    if(reNoDe.test(u)){
+      return { ok:false, correct, hint: hintRule("PREP_DE", `Qui serve '${prep.phrase}' (con de).`) };
     }
-
-    const reCorrect = okRegexes[0];
-    const reNoDe = okRegexes[1];
-
-    if(reNoDe && reNoDe.test(u)){
-      return { ok:false, correct, hint: hintRule("PREP_DE", `Qui serve **${prep.phrase}** (con “de”).`) };
-    }
-
-    const ok = reCorrect.test(u);
-    return ok
-      ? { ok:true, correct, hint:"✅ Preposizione corretta." }
-      : { ok:false, correct, hint: hintRule("PREP_DE", `Esempio: “Hay X ${prep.phrase} Y …”.`) };
+    return reCorrect.test(u)
+      ? { ok:true, correct, hint:"OK: preposizione corretta." }
+      : { ok:false, correct, hint: hintRule("PREP_DE") };
   };
 }
 
@@ -252,22 +360,20 @@ function makeValidator_FamilyAgeJob(member, name, age, job){
 
   return (userText) => {
     const u = norm(userText);
-
     if(reBadEdad.test(u)){
-      return { ok:false, correct:`${cap(member)} se llama ${name} y tiene ${age} años. Es ${job}.`, hint: hintRule("TENER_EDAD") };
+      return { ok:false, correct:`${cap(member)} se llama ${name} y tiene ${age} anos. Es ${job}.`, hint: hintRule("TENER_EDAD") };
     }
     if(u.includes("esta ") && u.includes(jobN)){
-      return { ok:false, correct:`${cap(member)} se llama ${name} y tiene ${age} años. Es ${job}.`, hint: hintRule("SER_PROF") };
+      return { ok:false, correct:`${cap(member)} se llama ${name} y tiene ${age} anos. Es ${job}.`, hint: hintRule("SER_PROF") };
     }
 
-    const ok = reOk.test(u);
-    return ok
-      ? { ok:true, correct:`${cap(member)} se llama ${name} y tiene ${age} años. Es ${job}.`, hint:"✅ Benissimo." }
-      : { ok:false, correct:`${cap(member)} se llama ${name} y tiene ${age} años. Es ${job}.`, hint: `${hintRule("TENER_EDAD")} ${hintRule("SER_PROF")}` };
+    return reOk.test(u)
+      ? { ok:true, correct:`${cap(member)} se llama ${name} y tiene ${age} anos. Es ${job}.`, hint:"OK." }
+      : { ok:false, correct:`${cap(member)} se llama ${name} y tiene ${age} anos. Es ${job}.`, hint: `${hintRule("TENER_EDAD")} ${hintRule("SER_PROF")}` };
   };
 }
 
-/* -------------------- Builders (MCQ) -------------------- */
+/* -------------------- MCQ builders -------------------- */
 function buildMCQ_HayLocation(level){
   const o1 = pick(objects);
   const o2 = pick(objects);
@@ -284,27 +390,32 @@ function buildMCQ_HayLocation(level){
   const wrong1 = (prep.k === "entre")
     ? `Hay ${o1.s} ${prep.phrase} ${o2.s} en ${r}.`
     : `Hay ${o1.s} ${prep.phrase} ${o2.s} ${r}.`;
-  const wrong2 = `Está ${o1.s} ${prep.phrase} ${o2.s} en ${r}.`;
+  const wrong2 = `Esta ${o1.s} ${prep.phrase} ${o2.s} en ${r}.`;
   const wrong3 = (prep.k === "detras")
     ? `Hay ${o1.s} detras ${o2.s} en ${r}.`
     : `Hay ${o1.s} en ${r} ${prep.phrase} ${o2.s}.`;
 
-  let choices = shuffle([correct, wrong1, wrong2, wrong3]);
+  const choices = shuffle([correct, wrong1, wrong2, wrong3]);
   const answerIndex = choices.indexOf(correct);
+
+  const grammar = (prep.k === "entre")
+    ? "HAY + X + entre A y B + en + lugar"
+    : "HAY + X + (encima/debajo/delante/detras/al lado/dentro/fuera) DE + Y + en + lugar";
 
   return qMCQ(
     "Elige la frase correcta:",
     choices,
     answerIndex,
-    `Regola: “hay” = esistenza. Corretta: ${correct}`,
-    "hay + lugar"
+    `Regola: 'hay' = esistenza. Corretta: ${correct}`,
+    "hay + lugar",
+    grammar
   );
 }
 
 function buildMCQ_Mucho(level){
   const o = pick(objects);
   const room = pick(rooms);
-  const correctForm = (o.g==="f") ? "muchas" : "muchos";
+  const correctForm = (o.g === "f") ? "muchas" : "muchos";
   const correct = `Hay ${correctForm} ${o.p} en ${room}.`;
 
   const choices = shuffle([
@@ -315,11 +426,12 @@ function buildMCQ_Mucho(level){
   ]);
 
   return qMCQ(
-    "Completa con la forma correcta de “mucho”:",
+    "Completa con la forma correcta de 'mucho':",
     choices,
     choices.indexOf(correct),
-    `Plural: ${o.g==="f" ? "muchas" : "muchos"} + ${o.p}.`,
-    "mucho/a/os/as"
+    `Plural: ${correctForm} + ${o.p}.`,
+    "mucho/a/os/as",
+    "MUCHO: mucho/mucha/muchos/muchas + sustantivo (concordanza)"
   );
 }
 
@@ -329,17 +441,19 @@ function buildMCQ_Deictic(level){
   const o = pick(objects);
 
   const correct = `${d} hay ${o.s} en ${r}.`;
-  const wrongA = `${d} está ${o.s} en ${r}.`;
+  const wrongA = `${d} esta ${o.s} en ${r}.`;
   const wrongB = `Hay ${d} ${o.s} en ${r}.`;
   const wrongC = `${d} tengo ${o.s} en ${r}.`;
 
   const choices = shuffle([correct, wrongA, wrongB, wrongC]);
+
   return qMCQ(
-    `Elige la frase correcta usando “${d}”:`,
+    `Elige la frase correcta usando '${d}':`,
     choices,
     choices.indexOf(correct),
-    `Struttura: “${d} hay …”.`,
-    "aquí/ahí/allí"
+    `Struttura: '${d} hay ...'.`,
+    "aqui/ahi/alli",
+    "DEICTICOS: aqui (qui), ahi (li), alli (la) + HAY + ..."
   );
 }
 
@@ -348,18 +462,20 @@ function buildMCQ_House(level){
   const roomCount = pick([2,3,4,5]);
   const hasGarden = Math.random() < 0.4;
 
-  const correct = `Mi casa es ${t}. Tiene ${roomCount} habitaciones${hasGarden ? " y un jardín" : ""}.`;
-  const wrong1 = `Mi casa está ${t}. Tiene ${roomCount} habitaciones${hasGarden ? " y un jardín" : ""}.`;
-  const wrong2 = `Mi casa es ${t}. Tiene ${roomCount} habitación${hasGarden ? " y un jardín" : ""}.`;
-  const wrong3 = `Mi casa es ${t}. Tiene ${roomCount} habitaciones${hasGarden ? " y una jardín" : ""}.`;
+  const correct = `Mi casa es ${t}. Tiene ${roomCount} habitaciones${hasGarden ? " y un jardin" : ""}.`;
+  const wrong1 = `Mi casa esta ${t}. Tiene ${roomCount} habitaciones${hasGarden ? " y un jardin" : ""}.`;
+  const wrong2 = `Mi casa es ${t}. Tiene ${roomCount} habitacion${hasGarden ? " y un jardin" : ""}.`;
+  const wrong3 = `Mi casa es ${t}. Tiene ${roomCount} habitaciones${hasGarden ? " y una jardin" : ""}.`;
 
   const choices = shuffle([correct, wrong1, wrong2, wrong3]);
+
   return qMCQ(
-    "Elige la descripción correcta:",
+    "Elige la descripcion correcta:",
     choices,
     choices.indexOf(correct),
-    "Ojo: “Mi casa es…”; plural: “habitaciones”; “un jardín” (masc.).",
-    "descripción casa"
+    "Ojo: 'Mi casa es...'; plural: habitaciones; 'un jardin'.",
+    "descripcion casa",
+    "DESCRIBIR CASA: Mi casa es ... / Tiene + numero + habitaciones"
   );
 }
 
@@ -369,42 +485,44 @@ function buildMCQ_Family(level){
   const job = pick(["medico","profesor","estudiante","ingeniera","cocinero","enfermera","abogado","dependienta"]);
   const age = pick([12,13,14,15,16,17,40,42,45,50,65,70]);
 
-  const correct = `${cap(f.sing)} se llama ${name} y tiene ${age} años. Es ${job}.`;
-  const wrong1 = `${cap(f.sing)} se llama ${name} y es ${age} años. Es ${job}.`;
-  const wrong2 = `${cap(f.sing)} llama ${name} y tiene ${age} años. Es ${job}.`;
-  const wrong3 = `${cap(f.sing)} se llama ${name} y tiene ${age} años. Está ${job}.`;
+  const correct = `${cap(f.sing)} se llama ${name} y tiene ${age} anos. Es ${job}.`;
+  const wrong1 = `${cap(f.sing)} se llama ${name} y es ${age} anos. Es ${job}.`;
+  const wrong2 = `${cap(f.sing)} llama ${name} y tiene ${age} anos. Es ${job}.`;
+  const wrong3 = `${cap(f.sing)} se llama ${name} y tiene ${age} anos. Esta ${job}.`;
 
   const choices = shuffle([correct, wrong1, wrong2, wrong3]);
+
   return qMCQ(
     "Elige la frase correcta sobre la familia:",
     choices,
     choices.indexOf(correct),
-    "Edad: “tener años”. Professione: “ser …”.",
-    "familia"
+    "Edad: TENER anos. Profesion: SER ...",
+    "familia",
+    "FAMILIA: se llama + nombre; tiene + edad; es + profesion"
   );
 }
 
 const cultureFixed = [
-  qMCQ("¿Qué ciudad es la capital de España?", ["Barcelona","Madrid","Valencia","Sevilla"], 1, "La capital es Madrid.", "cultura"),
-  qMCQ("¿En qué ciudad está la Sagrada Familia?", ["Madrid","Barcelona","Bilbao","Granada"], 1, "Está en Barcelona.", "cultura"),
-  qMCQ("¿Dónde está el Museo del Prado?", ["Madrid","Barcelona","Bilbao","Granada"], 0, "Está en Madrid.", "cultura"),
-  qMCQ("Las Ramblas es una calle famosa de…", ["Madrid","Barcelona","Salamanca","Toledo"], 1, "En Barcelona.", "cultura")
+  qMCQ("Que ciudad es la capital de Espana?", ["Barcelona","Madrid","Valencia","Sevilla"], 1, "La capital es Madrid.", "cultura", "CULTURA: capital de Espana = Madrid"),
+  qMCQ("En que ciudad esta la Sagrada Familia?", ["Madrid","Barcelona","Bilbao","Granada"], 1, "Esta en Barcelona.", "cultura", "CULTURA: Sagrada Familia = Barcelona"),
+  qMCQ("Donde esta el Museo del Prado?", ["Madrid","Barcelona","Bilbao","Granada"], 0, "Esta en Madrid.", "cultura", "CULTURA: Museo del Prado = Madrid"),
+  qMCQ("Las Ramblas es una calle famosa de...", ["Madrid","Barcelona","Salamanca","Toledo"], 1, "En Barcelona.", "cultura", "CULTURA: Las Ramblas = Barcelona")
 ];
-
 function buildMCQ_Culture(level){
   return pick(cultureFixed);
 }
 
-/* -------------------- Builders (OPEN) -------------------- */
+/* -------------------- OPEN builders -------------------- */
 function buildOPEN_HayInRoom(level){
   const o = pick(objects);
   const room = pick(rooms);
   const sample = `Hay ${o.s} en ${room}.`;
   return qOPEN(
-    `Scrivi una frase corretta che dica che c’è ${o.s} in ${room}. (Usa “hay”)`,
+    `Scrivi una frase corretta che dica che c'e ${o.s} in ${room}. (Usa 'hay')`,
     makeValidator_HayInRoom(o, room),
     sample,
-    "hay (aperta)"
+    "hay (aperta)",
+    "HAY: Hay + nome + en + luogo (oppure: En + luogo + hay + nome)"
   );
 }
 
@@ -414,10 +532,11 @@ function buildOPEN_Mucho(level){
   const correctMucho = (obj.g === "f") ? "muchas" : "muchos";
   const sample = `Hay ${correctMucho} ${obj.p} en ${room}.`;
   return qOPEN(
-    `Scrivi una frase con “hay” + “mucho” (forma giusta) per dire che in ${room} ci sono molte/i ${obj.p}.`,
+    `Scrivi una frase con 'hay' + 'mucho' (forma giusta) per dire che in ${room} ci sono molti/e ${obj.p}.`,
     makeValidator_MuchoPlural(obj, room),
     sample,
-    "mucho/a/os/as (aperta)"
+    "mucho (aperta)",
+    "MUCHO: mucho/mucha/muchos/muchas + nome (concordanza)"
   );
 }
 
@@ -427,10 +546,11 @@ function buildOPEN_Deictic(level){
   const room = pick(rooms);
   const sample = `${cap(d)} hay ${obj.s} en ${room}.`;
   return qOPEN(
-    `Scrivi una frase corretta con “${d}” + “hay” + oggetto + stanza.`,
+    `Scrivi una frase corretta con '${d}' + 'hay' + oggetto + stanza.`,
     makeValidator_DeicticHay(d, obj, room),
     sample,
-    "aquí/ahí/allí (aperta)"
+    "deicticos (aperta)",
+    "DEICTICOS + HAY: aqui/ahi/alli + hay + nome + en + luogo"
   );
 }
 
@@ -443,11 +563,16 @@ function buildOPEN_Prep(level){
     ? `Hay ${obj1.s} entre ${obj2.s} y una silla en ${room}.`
     : `Hay ${obj1.s} ${prep.phrase} ${obj2.s} en ${room}.`;
 
+  const grammar = (prep.k === "entre")
+    ? "POSICION: entre A y B (senza 'de')"
+    : "POSICION: encima/debajo/delante/detras/al lado/dentro/fuera + DE";
+
   return qOPEN(
-    `Scrivi una frase con “hay” usando la posizione “${prep.phrase}” (o “entre … y …”) in una stanza.`,
+    `Scrivi una frase con 'hay' usando la posizione '${prep.phrase}'.`,
     makeValidator_PrepLocation(prep, obj1, obj2, room),
     sample,
-    "preposiciones (aperta)"
+    "preposiciones (aperta)",
+    grammar
   );
 }
 
@@ -456,13 +581,14 @@ function buildOPEN_Family(level){
   const name = pick(["Ana","Lucia","Pablo","Mario","Sara","Laura","Diego","Elena","Carlos","Marta"]);
   const job = pick(["medico","profesor","estudiante","ingeniera","cocinero","enfermera","abogado","dependienta"]);
   const age = pick([12,13,14,15,16,17,40,42,45,50,65,70]);
-  const sample = `${cap(f.sing)} se llama ${name} y tiene ${age} años. Es ${job}.`;
+  const sample = `${cap(f.sing)} se llama ${name} y tiene ${age} anos. Es ${job}.`;
 
   return qOPEN(
-    `Scrivi una frase su ${f.sing}: nome + età + lavoro. (Ricorda: tener años / ser + profesión)`,
+    `Scrivi una frase su ${f.sing}: nome + eta + lavoro.`,
     makeValidator_FamilyAgeJob(f.sing, name, age, job),
     sample,
-    "familia (aperta)"
+    "familia (aperta)",
+    "FAMILIA: X se llama ...; tiene ... anos; es + profesion"
   );
 }
 
@@ -475,6 +601,7 @@ function generate250(level){
     {fn: () => buildMCQ_House(level), n: 25},
     {fn: () => buildMCQ_Family(level), n: 25},
     {fn: () => buildMCQ_Culture(level), n: 20},
+
     {fn: () => buildOPEN_HayInRoom(level), n: 20},
     {fn: () => buildOPEN_Mucho(level), n: 10},
     {fn: () => buildOPEN_Deictic(level), n: 8},
@@ -511,13 +638,13 @@ function generate250(level){
     const key = (q.type === "mcq")
       ? `mcq||${q.prompt}||${q.choices.join("||")}`
       : `open||${q.prompt}||${q.sample}`;
-
-    if(!all.some(x => {
+    const exists = all.some(x => {
       const k2 = (x.type === "mcq")
         ? `mcq||${x.prompt}||${x.choices.join("||")}`
         : `open||${x.prompt}||${x.sample}`;
       return k2 === key;
-    })) all.push(q);
+    });
+    if(!exists) all.push(q);
   }
 
   return all.slice(0,250);
@@ -529,8 +656,7 @@ let quiz = [];
 let idx = 0;
 let score = 0;
 let locked = false;
-
-let wrongLog = []; // {q, chosenIndex?, userText?}
+let wrongLog = [];
 
 function show(id){
   ["setup","quiz","result"].forEach(x => $(x).classList.add("hidden"));
@@ -553,8 +679,12 @@ function renderQuestion(){
   $("quizTitle").textContent = `Domanda ${idx+1} / ${quiz.length}`;
   $("meta").textContent = `Tipo: ${q.type.toUpperCase()} • Tema: ${q.tag}`;
   $("scorePill").textContent = `Punti: ${score}`;
-  $("qtext").textContent = q.prompt;
 
+  $("grammarText").textContent = q.grammar || "-";
+
+  $("qtext").innerHTML = wrapGloss(q.prompt);
+
+  // toggle MCQ vs OPEN UI
   $("choices").innerHTML = "";
   $("openWrap").classList.add("hidden");
 
@@ -564,13 +694,13 @@ function renderQuestion(){
       const btn = document.createElement("button");
       btn.className = "choice";
       btn.type = "button";
-      btn.textContent = c;
+      btn.innerHTML = wrapGloss(c);
       btn.addEventListener("click", () => chooseMCQ(i, btn));
       choicesEl.appendChild(btn);
     });
   } else {
     $("openWrap").classList.remove("hidden");
-    $("openHint").textContent = `Esempio valido: ${q.sample}`;
+    $("openHint").innerHTML = `Esempio valido: ${wrapGloss(q.sample)}`;
     setTimeout(() => $("openInput").focus(), 0);
   }
 
@@ -586,14 +716,14 @@ function chooseMCQ(i, btn){
   allBtns.forEach(b => b.disabled = true);
 
   const correctBtn = allBtns[q.answerIndex];
-  correctBtn.classList.add("correct");
+  if(correctBtn) correctBtn.classList.add("correct");
 
   if(i === q.answerIndex){
     score += 1;
-    $("feedback").innerHTML = `✅ <strong>Correcto</strong> — ${q.explanation}`;
+    $("feedback").innerHTML = `✅ <strong>Correcto</strong> — ${escapeHtml(q.explanation)}`;
   } else {
     btn.classList.add("wrong");
-    $("feedback").innerHTML = `❌ <strong>No</strong> — ${q.explanation}`;
+    $("feedback").innerHTML = `❌ <strong>No</strong> — ${escapeHtml(q.explanation)}`;
     wrongLog.push({ q, chosenIndex: i });
   }
 
@@ -611,9 +741,9 @@ function checkOPEN(){
 
   if(res.ok){
     score += 1;
-    $("feedback").innerHTML = `✅ <strong>Correcto</strong> — ${res.hint}`;
+    $("feedback").innerHTML = `✅ <strong>Correcto</strong> — ${escapeHtml(res.hint)}`;
   } else {
-    $("feedback").innerHTML = `❌ <strong>No</strong><br><span class="muted">Suggerimento:</span> ${res.hint}<br><span class="muted">Corretto:</span> <strong>${res.correct}</strong>`;
+    $("feedback").innerHTML = `❌ <strong>No</strong><br><span class="muted">Suggerimento:</span> ${escapeHtml(res.hint)}<br><span class="muted">Corretto:</span> <strong>${wrapGloss(res.correct)}</strong>`;
     wrongLog.push({ q, userText });
   }
 
@@ -629,11 +759,10 @@ function finish(){
   let msg = `Hai fatto ${score} / ${total} punti (${pct}%).`;
   if(pct >= 90) msg += " Ottimo!";
   else if(pct >= 75) msg += " Molto bene!";
-  else if(pct >= 60) msg += " Bene, continua così.";
-  else msg += " Da ripassare: hay, mucho, preposizioni, tener años, ser…";
+  else if(pct >= 60) msg += " Bene, continua cosi.";
+  else msg += " Da ripassare: hay, mucho, preposizioni, tener anos, ser...";
 
   $("resultText").textContent = msg;
-
   $("review").classList.add("hidden");
   $("review").innerHTML = "";
 }
@@ -657,21 +786,21 @@ function renderReview(){
       const chosen = q.choices[w.chosenIndex] ?? "(nessuna)";
       const correct = q.choices[q.answerIndex];
       div.innerHTML = `
-        <div class="tag">Errore ${k+1} • ${q.tag} • MCQ</div>
-        <div><strong>Domanda:</strong> ${q.prompt}</div>
-        <div><strong>La tua risposta:</strong> ${chosen}</div>
-        <div><strong>Corretto:</strong> ${correct}</div>
-        <div class="muted" style="margin-top:6px">${q.explanation}</div>
+        <div class="tag">Errore ${k+1} • ${escapeHtml(q.tag)} • MCQ</div>
+        <div><strong>Domanda:</strong> ${wrapGloss(q.prompt)}</div>
+        <div><strong>La tua risposta:</strong> ${wrapGloss(chosen)}</div>
+        <div><strong>Corretto:</strong> ${wrapGloss(correct)}</div>
+        <div class="muted" style="margin-top:6px">${escapeHtml(q.explanation)}</div>
       `;
     } else {
       const user = w.userText ?? "(vuota)";
       const preview = q.validator("");
       div.innerHTML = `
-        <div class="tag">Errore ${k+1} • ${q.tag} • OPEN</div>
-        <div><strong>Domanda:</strong> ${q.prompt}</div>
-        <div><strong>La tua risposta:</strong> ${user}</div>
-        <div><strong>Esempio corretto:</strong> ${preview.correct}</div>
-        <div class="muted" style="margin-top:6px">${preview.hint}</div>
+        <div class="tag">Errore ${k+1} • ${escapeHtml(q.tag)} • OPEN</div>
+        <div><strong>Domanda:</strong> ${wrapGloss(q.prompt)}</div>
+        <div><strong>La tua risposta:</strong> ${escapeHtml(user)}</div>
+        <div><strong>Esempio corretto:</strong> ${wrapGloss(preview.correct)}</div>
+        <div class="muted" style="margin-top:6px">${escapeHtml(preview.hint)}</div>
       `;
     }
 
@@ -681,6 +810,7 @@ function renderReview(){
   box.classList.remove("hidden");
 }
 
+/* -------------------- Quiz building with format -------------------- */
 function buildQuizFromBank(bank, mode, count, format, openPct){
   let pool = bank.slice();
 
@@ -726,7 +856,7 @@ $("startBtn").addEventListener("click", () => {
 $("regenBtn").addEventListener("click", () => {
   const level = $("level").value;
   BANK = generate250(level);
-  alert("Fatto! Ho rigenerato una banca di 250 domande (con scelte + aperte)." );
+  alert("Fatto! Ho rigenerato una banca di 250 domande.");
 });
 
 $("nextBtn").addEventListener("click", () => {
@@ -743,7 +873,6 @@ $("skipBtn").addEventListener("click", () => {
 
 $("restartBtn").addEventListener("click", () => show("setup"));
 $("backBtn").addEventListener("click", () => show("setup"));
-
 $("reviewBtn").addEventListener("click", () => renderReview());
 
 $("checkOpenBtn").addEventListener("click", () => checkOPEN());
@@ -752,6 +881,24 @@ $("openInput").addEventListener("keydown", (e) => {
     e.preventDefault();
     checkOPEN();
   }
+});
+
+// click-to-translate
+document.addEventListener("click", (e) => {
+  const el = e.target.closest(".gloss-word");
+  if(!el){
+    hideGlossTooltip();
+    return;
+  }
+  e.preventDefault();
+  const key = el.getAttribute("data-key");
+  const esText = el.getAttribute("data-es");
+  const r = el.getBoundingClientRect();
+  showGlossTooltip(r.left, r.top, esText, key);
+});
+
+document.addEventListener("keydown", (e) => {
+  if(e.key === "Escape") hideGlossTooltip();
 });
 
 /* Avvio */
