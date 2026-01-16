@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Quiz di Spagnolo (250 domande)</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <h1>Quiz di Spagnolo</h1>
+      <p class="muted">250 domande • Prima superiore • Scelte + aperte • Post-it grammaticale + traduzione parole (click)</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card" id="setup">
+      <h2>Impostazioni</h2>
+
+      <div class="grid">
+        <label class="field">
+          <span>Modalità</span>
+          <select id="mode">
+            <option value="ordered">In ordine (1→250)</option>
+            <option value="shuffled" selected>Mescolate</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Domande (max 250)</span>
+          <input id="count" type="number" min="1" max="250" value="30" />
+        </label>
+
+        <label class="field">
+          <span>Difficoltà</span>
+          <select id="level">
+            <option value="easy">Facile</option>
+            <option value="normal" selected>Normale</option>
+            <option value="hard">Più difficile</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Tipo di domande</span>
+          <select id="format">
+            <option value="mixed" selected>Miste (scelte + aperte)</option>
+            <option value="mcq">Solo a scelta</option>
+            <option value="open">Solo aperte</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>% domande aperte (solo se “Miste”)</span>
+          <input id="openPct" type="number" min="0" max="100" value="35" />
+        </label>
+
+        <div class="field">
+          <span class="muted">Suggerimento</span>
+          <div class="muted" style="padding:10px 12px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(0,0,0,.15)">
+            Clicca sulle parole evidenziate per vedere la traduzione in italiano.
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="startBtn" class="btn primary">Inizia quiz</button>
+        <button id="regenBtn" class="btn">Rigenera 250 domande</button>
+      </div>
+
+      <details class="hint">
+        <summary>Come usarlo su GitHub Pages</summary>
+        <ol>
+          <li>Crea un repo su GitHub (es. <code>quiz-espanol</code>).</li>
+          <li>Carica questi file nella root del repo.</li>
+          <li>Vai su <b>Settings → Pages</b>, scegli <b>Deploy from a branch</b>, branch <b>main</b>, folder <b>/ (root)</b>.</li>
+          <li>Apri il link che GitHub ti genera.</li>
+        </ol>
+      </details>
+    </section>
+
+    <section class="card hidden" id="quiz">
+      <div class="quizHead">
+        <div>
+          <h2 id="quizTitle">Domanda</h2>
+          <p class="muted" id="meta"></p>
+        </div>
+        <div class="pill" id="scorePill">Punti: 0</div>
+      </div>
+
+      <div class="progress">
+        <div class="progress__bar" id="progressBar"></div>
+      </div>
+
+      <!-- POST-IT grammaticale fisso -->
+      <div class="note" id="grammarNote">
+        <div class="note__title">Formula grammaticale</div>
+        <div class="note__body" id="grammarText">—</div>
+      </div>
+
+      <div class="qbox">
+        <div class="qtext" id="qtext">...</div>
+
+        <!-- MCQ -->
+        <div class="choices" id="choices"></div>
+
+        <!-- OPEN -->
+        <div id="openWrap" class="hidden">
+          <label class="field">
+            <span class="muted">Scrivi la risposta (in spagnolo)</span>
+            <input id="openInput" type="text" placeholder="Es: Hay una mesa en la cocina." />
+          </label>
+          <div class="actions">
+            <button id="checkOpenBtn" class="btn primary">Verifica</button>
+          </div>
+          <p class="muted" style="margin-top:6px" id="openHint"></p>
+        </div>
+
+        <div class="feedback" id="feedback"></div>
+      </div>
+
+      <div class="actions">
+        <button id="skipBtn" class="btn">Salta</button>
+        <button id="nextBtn" class="btn primary" disabled>Avanti</button>
+        <button id="restartBtn" class="btn danger">Ricomincia</button>
+      </div>
+
+      <!-- Tooltip traduzione (stile Duolingo) -->
+      <div id="glossTooltip" class="gloss hidden" role="dialog" aria-live="polite">
+        <div class="gloss__it" id="glossIt">...</div>
+        <div class="gloss__es" id="glossEs">...</div>
+        <div class="muted" style="margin-top:6px;font-size:12px">(ESC per chiudere)</div>
+      </div>
+    </section>
+
+    <section class="card hidden" id="result">
+      <h2>Risultato</h2>
+      <p id="resultText" class="big"></p>
+      <div class="actions">
+        <button id="reviewBtn" class="btn">Rivedi errori</button>
+        <button id="backBtn" class="btn primary">Torna alle impostazioni</button>
+      </div>
+
+      <div id="review" class="review hidden"></div>
+    </section>
+
+    <footer class="footer muted">
+      <p>Offline, nessuna libreria esterna. Modificabile liberamente.</p>
+    </footer>
+  </main>
+
+  <script src="quiz.js"></script>
+</body>
+</html>
