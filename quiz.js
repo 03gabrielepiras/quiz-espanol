@@ -47,6 +47,11 @@ function escapeHtml(str){
     .replaceAll("'","&#039;");
 }
 
+function fmtVocabLine(v){
+  // v: {es,it}
+  return `<span class="gloss-word" data-es="${escapeHtml(v.es)}" data-key="${escapeHtml(norm(v.es))}">${escapeHtml(v.es)}</span> = <strong>${escapeHtml(v.it)}</strong>`;
+}
+
 const $ = (id) => document.getElementById(id);
 
 /* -------------------- Data pools (accent-less for matching) -------------------- */
@@ -150,19 +155,84 @@ const GLOSS = {
   "se llama": "si chiama"
 };
 
-// Auto-aggiunta: oggetti, stanze, familiari
+// Aggiungiamo automaticamente oggetti/stanze/famiglia al glossario (utile per click traduzione)
+const ROOMS_IT = {
+  "la cocina":"la cucina",
+  "el salon":"il salotto",
+  "el comedor":"la sala da pranzo",
+  "el dormitorio":"la camera da letto",
+  "el bano":"il bagno",
+  "el pasillo":"il corridoio",
+  "la habitacion":"la stanza",
+  "el estudio":"lo studio",
+  "la terraza":"la terrazza",
+  "el balcon":"il balcone",
+  "el garaje":"il garage",
+  "el jardin":"il giardino"
+};
+
+const OBJECTS_IT = {
+  "mesa":"tavolo",
+  "silla":"sedia",
+  "sofa":"divano",
+  "cama":"letto",
+  "armario":"armadio",
+  "lampara":"lampada",
+  "espejo":"specchio",
+  "nevera":"frigorifero",
+  "horno":"forno",
+  "ducha":"doccia",
+  "lavabo":"lavandino",
+  "television":"televisione",
+  "ordenador":"computer",
+  "libro":"libro",
+  "ventana":"finestra",
+  "puerta":"porta",
+  "alfombra":"tappeto",
+  "estanteria":"libreria / scaffale",
+  "cuadro":"quadro",
+  "planta":"pianta"
+};
+
 for(const r of rooms){
-  const key = norm(r.replace(/^el |^la /,""));
-  if(!GLOSS[key]){
-    // traduzioni base (non perfette, ma utili per prima superiore)
-    const map = {
-      "cocina":"cucina","salon":"salotto","comedor":"sala da pranzo","dormitorio":"camera da letto",
-      "bano":"bagno","pasillo":"corridoio","habitacion":"stanza","estudio":"studio",
-      "terraza":"terrazza","balcon":"balcone","garaje":"garage","jardin":"giardino"
-    };
-    if(map[key]) GLOSS[key] = map[key];
+  const k = norm(r);
+  if(!GLOSS[k] && ROOMS_IT[k]) GLOSS[k] = ROOMS_IT[k];
+}
+for(const o of objects){
+  // una mesa -> mesa
+  const base = norm(o.s).replace(/^(un|una)\s+/,'');
+  if(!GLOSS[base] && OBJECTS_IT[base]) GLOSS[base] = OBJECTS_IT[base];
+  // plurali
+  const pbase = norm(o.p);
+  if(!GLOSS[pbase] && OBJECTS_IT[base]) GLOSS[pbase] = OBJECTS_IT[base] + " (pl.)";
+}
+for(const f of family){
+  const k = norm(f.sing);
+  const base = k.replace(/^mi\s+/,'');
+  const famIT = {
+    "madre":"madre","padre":"padre","hermano":"fratello","hermana":"sorella",
+    "abuelo":"nonno","abuela":"nonna","tio":"zio","tia":"zia","primo":"cugino","prima":"cugina"
+  }[base];
+  if(famIT){
+    GLOSS[k] = "mio/mia " + famIT;
+    GLOSS[base] = famIT;
   }
 }
+
+function addVerb(inf, it, forms){
+  const k = norm(inf);
+  GLOSS[k] = `${inf} = ${it}`;
+  for(const form of forms){
+    const fk = norm(form);
+    if(!GLOSS[fk]) GLOSS[fk] = `${inf} (${it})`;
+  }
+}
+
+// verbi presenti nel quiz (base)
+addVerb("hablar", "parlare", ["hablo","hablas","habla","hablamos","hablais","hablan"]);
+addVerb("comer", "mangiare", ["como","comes","come","comemos","comeis","comen"]);
+addVerb("vivir", "vivere", ["vivo","vives","vive","vivimos","vivis","viven"]);
+addVerb("salir", "uscire", ["salgo","sales","sale","salimos","salis","salen"]);
 for(const o of objects){
   const key = norm(o.s.replace(/^un |^una /,""));
   const map = {
@@ -246,12 +316,17 @@ function qOPEN(prompt, validator, sample, tag, grammar){
   return { type:"open", prompt, validator, sample, tag, grammar };
 }
 
+function gNote(ruleIt, examples = [], vocab = [], taskIt = ""){
+  // vocab: [{es,it}]
+  return { ruleIt, examples, vocab, taskIt };
+}
+
 /* -------------------- OPEN validators -------------------- */
 function makeValidator_HayInRoom(o, room){
-  const oN = norm(o.s);
-  const roomN = norm(room);
-  const re1 = new RegExp(`^hay ${escapeReg(oN)} en ${escapeReg(roomN)}$`);
-  const re2 = new RegExp(`^en ${escapeReg(roomN)} hay ${escapeReg(oN)}$`);
+  // PERMISSIVO: non obblighiamo a usare esattamente l'oggetto/stanza della consegna.
+  // Controlliamo solo la struttura grammaticale richiesta.
+  const re1 = /^hay\s+.+\s+en\s+.+$/;
+  const re2 = /^en\s+.+\s+hay\s+.+$/;
 
   return (userText) => {
     const u = norm(userText);
@@ -265,90 +340,91 @@ function makeValidator_HayInRoom(o, room){
 
     const ok = re1.test(u) || re2.test(u);
     return ok
-      ? { ok:true, correct:`Hay ${o.s} en ${room}.`, hint:"OK: struttura corretta." }
+      ? { ok:true, correct:`Hay ${o.s} en ${room}.`, hint:"✅ Grammatica corretta (hay + en + luogo)." }
       : { ok:false, correct:`Hay ${o.s} en ${room}.`, hint: hintRule("HAY_EXISTE") };
   };
 }
 
 function makeValidator_MuchoPlural(obj, room){
-  const roomN = norm(room);
-  const nounPlural = norm(obj.p);
+  // PERMISSIVO: accettiamo qualunque lessico, ma controlliamo la forma di "mucho".
+  // Richiediamo: hay + muchos/muchas + (nome plurale) + en + (luogo)
   const correctMucho = (obj.g === "f") ? "muchas" : "muchos";
-
-  const re1 = new RegExp(`^hay ${escapeReg(correctMucho)} ${escapeReg(nounPlural)} en ${escapeReg(roomN)}$`);
-  const re2 = new RegExp(`^en ${escapeReg(roomN)} hay ${escapeReg(correctMucho)} ${escapeReg(nounPlural)}$`);
+  const re1 = /^hay\s+(muchos|muchas)\s+.+\s+en\s+.+$/;
+  const re2 = /^en\s+.+\s+hay\s+(muchos|muchas)\s+.+$/;
 
   return (userText) => {
     const u = norm(userText);
 
-    const hasSomeMucho = /\\bmucho(s)?\\b|\\bmucha(s)?\\b/.test(u);
-    const okMucho = u.includes(`${correctMucho} ${nounPlural}`);
-    if(hasSomeMucho && !okMucho){
+    // errori tipici: "mucho" / "mucha" al singolare
+    if(/\bmucho\b|\bmucha\b/.test(u)){
       return {
         ok:false,
         correct:`Hay ${correctMucho} ${obj.p} en ${room}.`,
-        hint: hintRule("MUCHO_ACUERDO", `Qui: ${correctMucho} ${obj.p}.`)
+        hint: hintRule("MUCHO_ACUERDO", "Qui serve il plurale: muchos/muchas.")
       };
     }
 
-    const ok = re1.test(u) || re2.test(u);
+    const ok = (re1.test(u) || re2.test(u)) && (u.includes("muchos") || u.includes("muchas"));
+    // Se l'utente usa la forma "sbagliata" per il genere, NON lo bocciamo (per non penalizzare lessico/genere).
+    // Mostriamo comunque l'esempio corretto per l'oggetto dato.
     return ok
-      ? { ok:true, correct:`Hay ${correctMucho} ${obj.p} en ${room}.`, hint:"OK: concordanza corretta." }
+      ? { ok:true, correct:`Hay ${correctMucho} ${obj.p} en ${room}.`, hint:"✅ Struttura corretta (plural)." }
       : { ok:false, correct:`Hay ${correctMucho} ${obj.p} en ${room}.`, hint: hintRule("MUCHO_ACUERDO") };
   };
 }
 
 function makeValidator_DeicticHay(deic, obj, room){
   const dN = norm(deic);
-  const oN = norm(obj.s);
-  const roomN = norm(room);
-
-  const re1 = new RegExp(`^${escapeReg(dN)} hay ${escapeReg(oN)} en ${escapeReg(roomN)}$`);
-  const re2 = new RegExp(`^en ${escapeReg(roomN)} ${escapeReg(dN)} hay ${escapeReg(oN)}$`);
+  // Permissivo: basta usare il deittico richiesto + hay + en + luogo.
+  const re1 = new RegExp(`^${escapeReg(dN)}\\s+hay\\s+.+\\s+en\\s+.+$`);
+  const re2 = new RegExp(`^en\\s+.+\\s+${escapeReg(dN)}\\s+hay\\s+.+$`);
 
   return (userText) => {
     const u = norm(userText);
     const ok = re1.test(u) || re2.test(u);
     return ok
-      ? { ok:true, correct:`${cap(deic)} hay ${obj.s} en ${room}.`, hint:"OK: uso corretto." }
-      : { ok:false, correct:`${cap(deic)} hay ${obj.s} en ${room}.`, hint: hintRule("DEICTIC", `Qui serve '${deic}' + hay.`) };
+      ? { ok:true, correct:`${cap(deic)} hay ${obj.s} en ${room}.`, hint:"✅ Struttura corretta." }
+      : { ok:false, correct:`${cap(deic)} hay ${obj.s} en ${room}.`, hint: hintRule("DEICTIC", `Qui devi usare **${deic}** + hay + ... + en + luogo.`) };
   };
 }
 
 function makeValidator_PrepLocation(prep, obj1, obj2, room){
+  // PERMISSIVO: non obblighiamo a usare esattamente gli oggetti della consegna.
+  // Controlliamo: "hay" + preposizione corretta + "en" + luogo.
   const pN = norm(prep.phrase);
-  const o1N = norm(obj1.s);
-  const o2N = norm(obj2.s);
-  const roomN = norm(room);
+  const phraseNoDe = pN.replace(/\s+de$/, "").trim();
 
-  let correct;
+  const correct = (prep.k === "entre")
+    ? `Hay ${obj1.s} entre ${obj2.s} y una silla en ${room}.`
+    : `Hay ${obj1.s} ${prep.phrase} ${obj2.s} en ${room}.`;
 
   if(prep.k === "entre"){
-    correct = `Hay ${obj1.s} entre ${obj2.s} y una silla en ${room}.`;
-    const re = new RegExp(`^hay ${escapeReg(o1N)} entre ${escapeReg(o2N)} y .+ en ${escapeReg(roomN)}$`);
+    const reEntre = /^hay\s+.+\s+entre\s+.+\s+y\s+.+\s+en\s+.+$/;
     return (userText) => {
       const u = norm(userText);
-      return re.test(u)
-        ? { ok:true, correct, hint:"OK: estructura con entre ... y ..." }
-        : { ok:false, correct, hint: hintRule("ENTRE") };
+      return reEntre.test(u)
+        ? { ok:true, correct, hint:"✅ Struttura corretta con 'entre ... y ...'." }
+        : { ok:false, correct, hint: hintRule("ENTRE", "Struttura: Hay X entre A y B en ...") };
     };
   }
 
-  correct = `Hay ${obj1.s} ${prep.phrase} ${obj2.s} en ${room}.`;
-  const reCorrect = new RegExp(`^hay ${escapeReg(o1N)} ${escapeReg(pN)} ${escapeReg(o2N)} en ${escapeReg(roomN)}$`);
-  const phraseNoDe = pN.replace(/\\s+de$/,"").trim();
-  const reNoDe = new RegExp(`^hay ${escapeReg(o1N)} ${escapeReg(phraseNoDe)} ${escapeReg(o2N)} en ${escapeReg(roomN)}$`);
+  // preposizioni con "de": encima de, debajo de, delante de, detras de, al lado de, dentro de, fuera de
+  const reCorrect = new RegExp(`^hay\\s+.+\\s+${escapeReg(pN)}\\s+.+\\s+en\\s+.+$`);
+  const reNoDe = phraseNoDe && phraseNoDe !== pN
+    ? new RegExp(`^hay\\s+.+\\s+${escapeReg(phraseNoDe)}\\s+.+\\s+en\\s+.+$`)
+    : null;
 
   return (userText) => {
     const u = norm(userText);
-    if(reNoDe.test(u)){
-      return { ok:false, correct, hint: hintRule("PREP_DE", `Qui serve '${prep.phrase}' (con de).`) };
+    if(reNoDe && reNoDe.test(u)){
+      return { ok:false, correct, hint: hintRule("PREP_DE", `Con '${prep.phrase}' serve 'de'.`) };
     }
     return reCorrect.test(u)
-      ? { ok:true, correct, hint:"OK: preposizione corretta." }
-      : { ok:false, correct, hint: hintRule("PREP_DE") };
+      ? { ok:true, correct, hint:"✅ Preposizione corretta." }
+      : { ok:false, correct, hint: hintRule("PREP_DE", `Esempio: Hay X ${prep.phrase} Y en ...`) };
   };
 }
+
 
 function makeValidator_FamilyAgeJob(member, name, age, job){
   const mN = norm(member);
@@ -517,12 +593,26 @@ function buildOPEN_HayInRoom(level){
   const o = pick(objects);
   const room = pick(rooms);
   const sample = `Hay ${o.s} en ${room}.`;
+  const baseObj = norm(o.s).replace(/^(un|una)\s+/,"");
+  const grammar = gNote(
+    "Regola (IT): 'hay' = 'c’e/ci sono' (esistenza). Struttura base: Hay + nome + en + luogo. Variante: En + luogo + hay + nome.",
+    [
+      "Hay una mesa en la cocina.",
+      "En el salon hay un sofa."
+    ],
+    [
+      {es:"hay", it:"c'e / ci sono"},
+      {es:o.s, it: OBJECTS_IT[baseObj] || "oggetto"},
+      {es:room, it: ROOMS_IT[norm(room)] || "stanza"}
+    ],
+    `Scrivi: Hay ${o.s} en ${room}.`
+  );
   return qOPEN(
-    `Scrivi una frase corretta che dica che c'e ${o.s} in ${room}. (Usa 'hay')`,
+    `Scrivi una frase corretta con 'hay' + oggetto + 'en' + stanza. (Puoi usare: ${o.s} / ${room})`,
     makeValidator_HayInRoom(o, room),
     sample,
     "hay (aperta)",
-    "HAY: Hay + nome + en + luogo (oppure: En + luogo + hay + nome)"
+    grammar
   );
 }
 
@@ -531,12 +621,26 @@ function buildOPEN_Mucho(level){
   const room = pick(rooms);
   const correctMucho = (obj.g === "f") ? "muchas" : "muchos";
   const sample = `Hay ${correctMucho} ${obj.p} en ${room}.`;
+  const grammar = gNote(
+    "Regola (IT): 'mucho' concorda con il nome in genere e numero: mucho/mucha/muchos/muchas.",
+    [
+      "Hay muchos libros en el salon.",
+      "Hay muchas sillas en la cocina."
+    ],
+    [
+      {es: correctMucho, it: correctMucho === "muchas" ? "molte" : "molti"},
+      {es: obj.p, it: (OBJECTS_IT[norm(obj.s).replace(/^(un|una)\s+/,"")] || "oggetti") + " (plurale)"},
+      {es: room, it: ROOMS_IT[norm(room)] || "stanza"}
+    ],
+    `Scrivi: Hay ${correctMucho} ${obj.p} en ${room}.`
+  );
+
   return qOPEN(
-    `Scrivi una frase con 'hay' + 'mucho' (forma giusta) per dire che in ${room} ci sono molti/e ${obj.p}.`,
+    `Scrivi una frase con 'hay' + '${correctMucho}' + un nome plurale + 'en + luogo'. (Puoi usare: ${obj.p} / ${room})`,
     makeValidator_MuchoPlural(obj, room),
     sample,
     "mucho (aperta)",
-    "MUCHO: mucho/mucha/muchos/muchas + nome (concordanza)"
+    grammar
   );
 }
 
@@ -545,12 +649,27 @@ function buildOPEN_Deictic(level){
   const obj = pick(objects);
   const room = pick(rooms);
   const sample = `${cap(d)} hay ${obj.s} en ${room}.`;
+  const grammar = gNote(
+    "Regola (IT): qui/lì/là: aquí (qui), ahí (lì vicino a te), allí (là lontano). Struttura: DEITTICO + hay + nome + en + luogo.",
+    [
+      "Aquí hay una mesa en la cocina.",
+      "Allí hay un cuadro en el salon."
+    ],
+    [
+      {es: d, it: GLOSS[norm(d)] || "deittico"},
+      {es: "hay", it: "c'è / ci sono"},
+      {es: obj.s, it: OBJECTS_IT[norm(obj.s).replace(/^(un|una)\s+/,"")] || "oggetto"},
+      {es: room, it: ROOMS_IT[norm(room)] || "stanza"}
+    ],
+    `Scrivi: ${d} hay ${obj.s} en ${room}.`
+  );
+
   return qOPEN(
-    `Scrivi una frase corretta con '${d}' + 'hay' + oggetto + stanza.`,
+    `Scrivi una frase corretta con '${d}' + 'hay' + oggetto + 'en' + luogo. (Puoi usare: ${obj.s} / ${room})`,
     makeValidator_DeicticHay(d, obj, room),
     sample,
     "deicticos (aperta)",
-    "DEICTICOS + HAY: aqui/ahi/alli + hay + nome + en + luogo"
+    grammar
   );
 }
 
@@ -564,11 +683,37 @@ function buildOPEN_Prep(level){
     : `Hay ${obj1.s} ${prep.phrase} ${obj2.s} en ${room}.`;
 
   const grammar = (prep.k === "entre")
-    ? "POSICION: entre A y B (senza 'de')"
-    : "POSICION: encima/debajo/delante/detras/al lado/dentro/fuera + DE";
+    ? gNote(
+        "Regola (IT): 'entre' = 'tra/fra'. Si usa senza 'de': entre A y B.",
+        [
+          "Hay una mesa entre una silla y un sofa en el salon.",
+          "Hay un cuadro entre la ventana y la puerta en el dormitorio."
+        ],
+        [
+          {es:"entre", it:"tra / fra"},
+          {es: obj1.s, it: OBJECTS_IT[norm(obj1.s).replace(/^(un|una)\s+/,"")] || "oggetto"},
+          {es: obj2.s, it: OBJECTS_IT[norm(obj2.s).replace(/^(un|una)\s+/,"")] || "oggetto"},
+          {es: room, it: ROOMS_IT[norm(room)] || "stanza"}
+        ],
+        `Scrivi: Hay ${obj1.s} entre ${obj2.s} y una silla en ${room}.`
+      )
+    : gNote(
+        "Regola (IT): per dire posizione si usa: encima/debajo/delante/detras/al lado/dentro/fuera + DE. Poi 'en' per il luogo.",
+        [
+          "Hay un libro encima de la mesa en la habitacion.",
+          "Hay una silla al lado de la cama en el dormitorio."
+        ],
+        [
+          {es: prep.phrase, it: GLOSS[norm(prep.phrase)] || "posizione"},
+          {es: obj1.s, it: OBJECTS_IT[norm(obj1.s).replace(/^(un|una)\s+/,"")] || "oggetto"},
+          {es: obj2.s, it: OBJECTS_IT[norm(obj2.s).replace(/^(un|una)\s+/,"")] || "oggetto"},
+          {es: room, it: ROOMS_IT[norm(room)] || "stanza"}
+        ],
+        `Scrivi: Hay ${obj1.s} ${prep.phrase} ${obj2.s} en ${room}.`
+      );
 
   return qOPEN(
-    `Scrivi una frase con 'hay' usando la posizione '${prep.phrase}'.`,
+    `Scrivi una frase con 'hay' usando la posizione '${prep.phrase}' e 'en + luogo'. (Puoi usare: ${obj1.s} / ${obj2.s} / ${room})`,
     makeValidator_PrepLocation(prep, obj1, obj2, room),
     sample,
     "preposiciones (aperta)",
@@ -583,20 +728,94 @@ function buildOPEN_Family(level){
   const age = pick([12,13,14,15,16,17,40,42,45,50,65,70]);
   const sample = `${cap(f.sing)} se llama ${name} y tiene ${age} anos. Es ${job}.`;
 
+  const grammar = gNote(
+    "Regola (IT): nome = 'se llama ...'; eta = 'tiene ... años' (non 'es ... años'); professione = 'es ...' (non 'esta ...').",
+    [
+      "Mi padre se llama Carlos y tiene 45 años. Es profesor.",
+      "Mi hermana se llama Ana y tiene 14 años. Es estudiante."
+    ],
+    [
+      {es:"se llama", it:"si chiama"},
+      {es:"tiene", it:"ha"},
+      {es:"es", it:"e'"},
+      {es:f.sing, it:GLOSS[norm(f.sing)] || "familiare"}
+    ],
+    `Scrivi: ${cap(f.sing)} se llama ${name} y tiene ${age} años. Es ${job}.`
+  );
+
   return qOPEN(
-    `Scrivi una frase su ${f.sing}: nome + eta + lavoro.`,
+    `Scrivi una frase su ${f.sing}: nome + eta + lavoro. (Puoi copiare la struttura del post-it)`,
     makeValidator_FamilyAgeJob(f.sing, name, age, job),
     sample,
     "familia (aperta)",
-    "FAMILIA: X se llama ...; tiene ... anos; es + profesion"
+    grammar
+  );
+}
+
+// -------------------- Missing word / verbo al presente (aperta) --------------------
+const VERB_BANK = [
+  {inf:"hablar", it:"parlare", forms:{yo:"hablo",tu:"hablas",el:"habla",nos:"hablamos",vos:"hablais",ellos:"hablan"}, type:"ar"},
+  {inf:"comer", it:"mangiare", forms:{yo:"como",tu:"comes",el:"come",nos:"comemos",vos:"comeis",ellos:"comen"}, type:"er"},
+  {inf:"vivir", it:"vivere", forms:{yo:"vivo",tu:"vives",el:"vive",nos:"vivimos",vos:"vivis",ellos:"viven"}, type:"ir"},
+  {inf:"salir", it:"uscire", forms:{yo:"salgo",tu:"sales",el:"sale",nos:"salimos",vos:"salis",ellos:"salen"}, type:"ir"}
+];
+
+const SUBJECTS = [
+  {k:"yo", es:"Yo"},
+  {k:"tu", es:"Tu"},
+  {k:"el", es:"El/ella"},
+  {k:"nos", es:"Nosotros"},
+  {k:"vos", es:"Vosotros"},
+  {k:"ellos", es:"Ellos"}
+];
+
+function buildOPEN_FillVerb(level){
+  const v = pick(VERB_BANK);
+  const subj = pick(SUBJECTS);
+  const expected = v.forms[subj.k];
+  const complement = pick([
+    "en casa", "en el salon", "en la cocina", "cada dia", "ahora", "por la manana"
+  ]);
+  const sample = `${subj.es} ${expected} (${v.inf}) ${complement}.`;
+
+  const grammar = gNote(
+    `Regola (IT): presente indicativo. Verbo: ${v.inf} = ${v.it}. Completa con la forma giusta per '${subj.es}'.`,
+    [
+      "AR: yo -o, tu -as, el -a, nos -amos, vos -ais, ellos -an",
+      "ER: yo -o, tu -es, el -e, nos -emos, vos -eis, ellos -en",
+      "IR: yo -o, tu -es, el -e, nos -imos, vos -is, ellos -en",
+      "Nota: salir ha 'yo salgo' (irregolare)."
+    ],
+    [
+      {es: v.inf, it: v.it},
+      {es: expected, it: `${v.inf} (${v.it})`}
+    ],
+    `Scrivi solo la parola mancante: ${subj.es} ____ (${v.inf}) ${complement}.`
+  );
+
+  const validator = (userText) => {
+    const u = norm(userText);
+    const exp = norm(expected);
+    if(u === exp){
+      return { ok:true, correct: expected, hint:"✅ Coniugazione corretta." };
+    }
+    return { ok:false, correct: expected, hint:`Risposta corretta: '${expected}'. (${v.inf} = ${v.it})` };
+  };
+
+  return qOPEN(
+    `Parola mancante: ${subj.es} ____ (${v.inf}) ${complement}. (Scrivi SOLO il verbo coniugato)` ,
+    validator,
+    sample,
+    "verbi presente (aperta)",
+    grammar
   );
 }
 
 /* -------------------- Build exactly 250 questions -------------------- */
 function generate250(level){
   const plan = [
-    {fn: () => buildMCQ_HayLocation(level), n: 60},
-    {fn: () => buildMCQ_Mucho(level), n: 40},
+    {fn: () => buildMCQ_HayLocation(level), n: 50},
+    {fn: () => buildMCQ_Mucho(level), n: 30},
     {fn: () => buildMCQ_Deictic(level), n: 30},
     {fn: () => buildMCQ_House(level), n: 25},
     {fn: () => buildMCQ_Family(level), n: 25},
@@ -606,7 +825,8 @@ function generate250(level){
     {fn: () => buildOPEN_Mucho(level), n: 10},
     {fn: () => buildOPEN_Deictic(level), n: 8},
     {fn: () => buildOPEN_Prep(level), n: 7},
-    {fn: () => buildOPEN_Family(level), n: 5}
+    {fn: () => buildOPEN_Family(level), n: 5},
+    {fn: () => buildOPEN_FillVerb(level), n: 20}
   ];
 
   let all = [];
@@ -630,7 +850,8 @@ function generate250(level){
     () => buildOPEN_Mucho(level),
     () => buildOPEN_Deictic(level),
     () => buildOPEN_Prep(level),
-    () => buildOPEN_Family(level)
+    () => buildOPEN_Family(level),
+    () => buildOPEN_FillVerb(level)
   ];
 
   while(all.length < 250){
@@ -668,6 +889,22 @@ function setProgress(){
   $("progressBar").style.width = `${pct}%`;
 }
 
+function renderGrammarNote(grammar){
+  if(!grammar) return "-";
+  if(typeof grammar === "string") return escapeHtml(grammar);
+
+  const rule = grammar.ruleIt ? `<div>${escapeHtml(grammar.ruleIt)}</div>` : "";
+  const ex = (grammar.examples && grammar.examples.length)
+    ? `<div style="margin-top:6px"><strong>Esempi:</strong><ul style="margin:6px 0 0 18px">${grammar.examples.map(e=>`<li>${wrapGloss(e)}</li>`).join("")}</ul></div>`
+    : "";
+  const vocab = (grammar.vocab && grammar.vocab.length)
+    ? `<div style="margin-top:6px"><strong>Parole utili (cliccabili):</strong><ul style="margin:6px 0 0 18px">${grammar.vocab.map(v=>`<li>${fmtVocabLine(v)}</li>`).join("")}</ul></div>`
+    : "";
+  const task = grammar.taskIt ? `<div style="margin-top:6px"><strong>Prova tu:</strong> ${wrapGloss(grammar.taskIt)}</div>` : "";
+
+  return rule + ex + vocab + task;
+}
+
 function renderQuestion(){
   locked = false;
   $("nextBtn").disabled = true;
@@ -680,7 +917,7 @@ function renderQuestion(){
   $("meta").textContent = `Tipo: ${q.type.toUpperCase()} • Tema: ${q.tag}`;
   $("scorePill").textContent = `Punti: ${score}`;
 
-  $("grammarText").textContent = q.grammar || "-";
+  $("grammarText").innerHTML = renderGrammarNote(q.grammar);
 
   $("qtext").innerHTML = wrapGloss(q.prompt);
 
