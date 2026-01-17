@@ -303,15 +303,11 @@ function buildA_present(opts){
     conocer: {"Tú":"conoces","Nosotros":"conocemos","Ella":"conoce","Él":"conoce"}
   };
   const correct = (forms[vv.inf] && forms[vv.inf][subj]) ? forms[vv.inf][subj] : vv.yo;
-  const distractors = shuffle([vv.yo, 'es', 'está', 'tengo', 'voy', correct]).filter((x,i,a)=>a.indexOf(x)===i).slice(0,4);
-  if(!distractors.includes(correct)) distractors[randInt(distractors.length)] = correct;
-  const choices = shuffle(distractors);
-  return mcq({
+  return cloze({
     skill:'Presente (verbi)',
     prompt:`Completa: ${subj} ___ (${vv.inf}).`,
-    choices,
-    answerIndex: choices.indexOf(correct),
-    explain:`(${vv.inf}) = ${vv.it}. Forma corretta: ${subj} ${correct}.`,
+    answer: correct,
+    hint:`(${vv.inf}) = ${vv.it}. Forma corretta: ${subj} ${correct}.`,
     meta:{ verb: vv.inf },
     tts:`${subj} ... ${vv.inf}.`
   });
@@ -466,19 +462,11 @@ function buildRoutine(){
   const v = pick(VERBS.filter(x => x.type === 'refl'));
   const freq = pick(FREQ);
   const correct = v.yo;
-  const fallbackChoices = ['me levanta', 'me levanto', 'me despierto', 'me acuesto', 'me ducho', 'me visto'];
-  const choices = shuffle([correct, ...fallbackChoices])
-    .filter((x,i,a)=>a.indexOf(x)===i)
-    .slice(0,4);
-  if(!choices.includes(correct)){
-    choices[randInt(choices.length)] = correct;
-  }
-  return mcq({
+  return cloze({
     skill:'Routine + Riflessivi',
     prompt:`Completa: Yo ${freq} ___ temprano. (${v.inf})`,
-    choices,
-    answerIndex: choices.indexOf(correct),
-    explain:`Riflessivi: yo ${v.yo}. (${v.inf} = ${v.it}).`,
+    answer: correct,
+    hint:`Riflessivi: yo ${v.yo}. (${v.inf} = ${v.it}).`,
     meta:{ verb:v.inf }
   });
 }
