@@ -1,0 +1,50 @@
+/* Stile semplice (come Quiz Diritto) */
+body { font-family: Arial, Helvetica, sans-serif; margin:0; padding:0; background:#f2f2f2; color:#111; }
+header { background:#1f3a6b; color:#fff; padding:12px 14px; }
+header h1 { margin:0; font-size:18px; }
+header .sub { margin-top:4px; font-size:12px; opacity:.9; }
+
+.container { max-width:900px; margin:0 auto; padding:12px; }
+.bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+.box { background:#fff; border:1px solid #ddd; border-radius:8px; padding:10px; }
+.box strong { font-weight:700; }
+button { padding:10px 12px; border:1px solid #999; background:#fff; border-radius:8px; cursor:pointer; }
+button.primary { background:#1f3a6b; color:#fff; border-color:#1f3a6b; }
+button.danger { background:#b42318; color:#fff; border-color:#b42318; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+
+.row { display:flex; gap:10px; flex-wrap:wrap; }
+.left { flex: 1 1 280px; }
+.right { flex: 2 1 380px; }
+
+.indexgrid { display:grid; grid-template-columns: repeat(10, 1fr); gap:6px; }
+@media (max-width:520px) { .indexgrid { grid-template-columns: repeat(8, 1fr); } }
+.qbtn { padding:10px 0; border-radius:8px; border:1px solid #bbb; background:#fff; font-weight:700; }
+.qbtn.current { border-color:#1f3a6b; background:#eaf0ff; }
+.qbtn.good { border-color:#1a7f37; background:#e9f7ef; }
+.qbtn.bad { border-color:#b42318; background:#fdecec; }
+
+.question h2 { margin:0 0 10px; font-size:18px; }
+.opt { display:block; width:100%; text-align:left; margin:8px 0; }
+.opt.good { border-color:#1a7f37; background:#e9f7ef; }
+.opt.bad { border-color:#b42318; background:#fdecec; }
+
+.explain { margin-top:10px; padding:10px; border:1px dashed #999; background:#fafafa; border-radius:8px; }
+.explain .title { font-weight:700; margin-bottom:6px; }
+.muted { color:#555; font-size:12px; }
+
+.results { margin-top:14px; }
+.pill { display:inline-block; padding:4px 8px; border:1px solid #ddd; border-radius:999px; background:#fff; font-size:12px; }
+
+/* Open answers */
+.openWrap { margin-top:10px; }
+.openWrap input { width:100%; padding:10px 12px; border:1px solid #999; border-radius:8px; }
+
+/* Click-to-translate */
+.gloss-word{ cursor:pointer; padding:0 2px; border-radius:6px; border:1px dashed #aaa; }
+.gloss-word:hover{ background:#eef4ff; }
+
+.gloss{ position:fixed; z-index:9999; max-width:320px; padding:10px 12px; border-radius:10px; border:1px solid #999; background:#fff; box-shadow:0 12px 30px rgba(0,0,0,.18); }
+.gloss.hidden{ display:none; }
+.gloss__it{ font-size:16px; font-weight:700; }
+.gloss__es{ font-size:12px; color:#555; margin-top:4px; }
