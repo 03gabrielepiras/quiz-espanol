@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Quiz di Spagnolo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header>
+  <div class="headrow">
+    <div class="brand">
+      <div class="flag" aria-hidden="true">
+        <!-- Bandiera Spagna (SVG semplice) -->
+        <svg width="28" height="18" viewBox="0 0 28 18" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Spagna">
+          <rect width="28" height="18" rx="3" fill="#AA151B"/>
+          <rect y="5" width="28" height="8" fill="#F1BF00"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Quiz di Spagnolo</h1>
+        <div class="sub">Allenamento/Verifica · post-it in italiano · tap parola = traduzione</div>
+      </div>
+    </div>
+
+    <div class="headstats">
+      <div class="pill">Timer <strong id="timer">00:00</strong></div>
+      <div class="pill">Punti <strong id="score">0</strong>/<span id="total">0</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="bar">
+
+    <label class="pill" style="display:flex;gap:6px;align-items:center;">
+      Domande
+      <select id="countSel">
+        <option value="10">10</option>
+        <option value="20">20</option>
+        <option value="30" selected>30</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+        <option value="250">250</option>
+      </select>
+    </label>
+
+    <label class="pill" style="display:flex;gap:6px;align-items:center;">
+      Tipo
+      <select id="formatSel">
+        <option value="mixed" selected>Miste</option>
+        <option value="mcq">Solo scelta</option>
+        <option value="open">Solo aperte</option>
+      </select>
+    </label>
+
+    <button class="primary" id="startBtn">Avvia</button>
+    <button id="finishBtn">Fine & Voto</button>
+    <button class="danger" id="restartBtn">Ricomincia</button>
+    <button id="modeBtn">Modalità: Allenamento</button>
+  </div>
+
+  <!-- Progressi per competenze (si aggiorna durante il quiz) -->
+  <div class="box skills" aria-label="Progressi per competenze">
+    <div class="skills__head">
+      <strong>Competenze</strong>
+      <span class="muted" id="streakInfo">Streak: 0</span>
+    </div>
+    <div class="skills__grid">
+      <div class="skill">
+        <div class="skill__top"><span>Hay</span><span class="muted" id="pct_HAY">0%</span></div>
+        <div class="skill__bar"><div class="skill__fill" id="bar_HAY" style="width:0%"></div></div>
+      </div>
+      <div class="skill">
+        <div class="skill__top"><span>Mucho</span><span class="muted" id="pct_MUCHO">0%</span></div>
+        <div class="skill__bar"><div class="skill__fill" id="bar_MUCHO" style="width:0%"></div></div>
+      </div>
+      <div class="skill">
+        <div class="skill__top"><span>Luoghi</span><span class="muted" id="pct_PREPOSICIONES">0%</span></div>
+        <div class="skill__bar"><div class="skill__fill" id="bar_PREPOSICIONES" style="width:0%"></div></div>
+      </div>
+      <div class="skill">
+        <div class="skill__top"><span>Qui/Lì</span><span class="muted" id="pct_DEICTICOS">0%</span></div>
+        <div class="skill__bar"><div class="skill__fill" id="bar_DEICTICOS" style="width:0%"></div></div>
+      </div>
+      <div class="skill">
+        <div class="skill__top"><span>Famiglia</span><span class="muted" id="pct_FAMILIA">0%</span></div>
+        <div class="skill__bar"><div class="skill__fill" id="bar_FAMILIA" style="width:0%"></div></div>
+      </div>
+      <div class="skill">
+        <div class="skill__top"><span>Verbi</span><span class="muted" id="pct_VERBI">0%</span></div>
+        <div class="skill__bar"><div class="skill__fill" id="bar_VERBI" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="left box">
+      <strong>Indice domande</strong>
+      <div class="muted" style="margin:6px 0 8px;">Tocca un numero per andare alla domanda.</div>
+      <div class="indexgrid" id="index"></div>
+    </div>
+
+    <div class="right box question">
+      <div class="muted" id="meta">Premi “Avvia” per iniziare.</div>
+      <h2 id="prompt">—</h2>
+
+      <div class="explain" id="postit" style="display:none;">
+        <div class="title" id="postitTitle">Post-it (regola)</div>
+        <div id="postitText"></div>
+      </div>
+
+      <div id="options"></div>
+
+      <!-- OPEN answer area -->
+      <div id="openArea" style="display:none; margin-top:10px;">
+        <div class="muted" style="margin-bottom:6px;">Scrivi la risposta (in spagnolo)</div>
+        <input id="openInput" type="text" placeholder="Es: Hay una mesa en la cocina." />
+        <div class="bar" style="margin-top:8px;">
+          <button class="primary" id="checkOpenBtn">Verifica</button>
+          <span class="muted" id="openSample"></span>
+        </div>
+      </div>
+
+      <div class="explain" id="feedbackBox" style="display:none;">
+        <div class="title" id="feedbackTitle">Risposta</div>
+        <div id="feedbackText"></div>
+        <div class="muted" id="feedbackLong" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="bar" style="margin-top:10px;">
+        <button id="prevBtn">Indietro</button>
+        <button id="nextBtn">Avanti</button>
+      </div>
+
+      <!-- Tooltip traduzione -->
+      <div id="glossTooltip" class="gloss hidden">
+        <div class="gloss_it" id="glossIt">—</div>
+        <div class="gloss_es" id="glossEs">—</div>
+        <div class="muted" style="margin-top:6px;">(ESC per chiudere)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box results" id="results" style="display:none;">
+    <strong>Risultati</strong>
+    <div style="margin-top:8px;" id="resultsBody"></div>
+  </div>
+</div>
+
+<!-- Toast / badge streak -->
+<div class="toast hidden" id="toast" role="status" aria-live="polite">
+  <div class="toast__icon">🏅</div>
+  <div>
+    <div class="toast__title" id="toastTitle">Ottimo!</div>
+    <div class="toast__text" id="toastText">15 risposte corrette di fila!</div>
+  </div>
+</div>
+
+<script src="quiz.js" defer></script>
+</body>
+</html>
