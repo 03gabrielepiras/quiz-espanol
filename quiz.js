@@ -339,7 +339,7 @@ function buildB_serEstar(){
       prompt:`${capitalize(who)} ___ ${state}.`,
       answer: correct,
       hint:'ESTAR = stato/posizione.',
-      meta:{ verb:'estar', obj: plural ? ('Las '+obj.p) : obj.es, objIt: obj.it }
+      meta:{ verb:'estar' }
     });
   }
   // correction style
@@ -356,7 +356,7 @@ function buildB_serEstar(){
       const ok = norm(u) === norm(wrong.c);
       return { ok, correct: wrong.c, msg: ok ? 'Perfetto.' : 'Controlla ser/estar.' };
     },
-    meta:{ obj: obj.p, objIt: obj.it }
+    meta:{ verb:'ser/estar' }
   });
 }
 
@@ -465,11 +465,19 @@ function buildMuyMucho(){
 function buildRoutine(){
   const v = pick(VERBS.filter(x => x.type === 'refl'));
   const freq = pick(FREQ);
+  const correct = v.yo;
+  const fallbackChoices = ['me levanta', 'me levanto', 'me despierto', 'me acuesto', 'me ducho', 'me visto'];
+  const choices = shuffle([correct, ...fallbackChoices])
+    .filter((x,i,a)=>a.indexOf(x)===i)
+    .slice(0,4);
+  if(!choices.includes(correct)){
+    choices[randInt(choices.length)] = correct;
+  }
   return mcq({
     skill:'Routine + Riflessivi',
     prompt:`Completa: Yo ${freq} ___ temprano. (${v.inf})`,
-    choices: shuffle([v.yo, 'me levanta', 'me levanto', 'me despierto']).filter((x,i,a)=>a.indexOf(x)===i).slice(0,4),
-    answerIndex: undefined,
+    choices,
+    answerIndex: choices.indexOf(correct),
     explain:`Riflessivi: yo ${v.yo}. (${v.inf} = ${v.it}).`,
     meta:{ verb:v.inf }
   });
@@ -1363,4 +1371,3 @@ function bind(){
 
 registerSW();
 bind();
-
