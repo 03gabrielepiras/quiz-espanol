@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <title>1GL1-GL2 SPAGNOLO • Prof L. Rosi</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0b1020" />
+  
+  <!-- iOS (Safari / PWA su Home Screen) -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Spagnolo" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar__inner">
+    <div class="brand">
+      <div class="flag" aria-hidden="true">🇪🇸</div>
+      <div>
+        <div class="brand__title">1GL1-GL2 SPAGNOLO</div>
+        <div class="brand__sub">Prof L. Rosi</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="chip" id="navHome">Home</button>
+      <button class="chip" id="navDashboard">Progressi</button>
+      <button class="chip" id="navTeacher">Classe</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- Modal nome (prima volta) -->
+  <div id="nameModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal__card">
+      <div class="modal__title">Chi sei?</div>
+      <div class="muted" style="margin-bottom:10px">Inserisci il tuo nome (rimarrà salvato su questo telefono).</div>
+      <input id="nameInput" type="text" placeholder="Es. Gabriele" />
+      <div class="actions" style="margin-top:10px">
+        <button class="btn primary" id="saveNameBtn">Entra</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal profilo (dopo 3 test o 50 domande) -->
+  <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal__card">
+      <div class="modal__title">Analisi profilo studente</div>
+      <div class="muted" style="margin-bottom:10px">In base alle tue risposte, ecco su cosa spingere di più.</div>
+      <div id="profileBody" class="small"></div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" id="closeProfileBtn">Chiudi</button>
+        <button class="btn primary" id="startTargetFromModal">Allenamento mirato</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOME -->
+  <section class="card" id="home">
+    <h1 id="helloTitle">Ciao 👋</h1>
+    <p class="muted">Scegli modalità e avvia una verifica da 38 domande sempre diverse.</p>
+
+    <div class="grid">
+      <label class="field">
+        <span>Nome</span>
+        <input id="studentName" type="text" placeholder="Il tuo nome" />
+      </label>
+      <label class="field">
+        <span>Modalità</span>
+        <select id="mode">
+          <option value="train">Allenamento</option>
+          <option value="test">Verifica</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Domande</span>
+        <input id="count" type="number" min="10" max="60" value="38" />
+      </label>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="startBtn">Inizia</button>
+      <button class="btn" id="resumeBtn">Riprendi</button>
+      <button class="btn hidden" id="targetBtn">Allenamento mirato</button>
+      <button class="btn hidden" id="installBtn">Installa</button>
+    </div>
+
+    <div class="pill" id="streakPill" style="margin-top:12px">Streak: 0</div>
+    <div id="skillsBars" style="margin-top:10px"></div>
+  </section>
+
+  <!-- QUIZ -->
+  <section class="card hidden" id="quiz">
+    <div class="quizHead">
+      <div>
+        <div id="qTitle" class="title">Domanda</div>
+        <div id="qMeta" class="muted"></div>
+      </div>
+      <div class="pill" id="scorePill">Punti: 0</div>
+    </div>
+
+    <div class="progress"><div class="progress__bar" id="progressBar"></div></div>
+
+    <div class="actions" style="margin:10px 0 0">
+      <button class="btn" id="toggleIndex">Indice</button>
+    </div>
+
+    <div id="qIndex" class="card hidden" style="margin-top:10px">
+      <div class="muted" style="margin-bottom:8px">Tocca un numero per andare alla domanda.</div>
+      <div id="qIndexGrid" class="indexgrid"></div>
+    </div>
+
+    <div class="note" id="noteBox">
+      <div class="note__title">Formula / Suggerimento</div>
+      <div class="note__body" id="noteText">—</div>
+    </div>
+
+    <div class="qbox">
+      <div class="qrow">
+        <div class="qtext" id="qText"></div>
+        <button class="iconbtn" id="qSpeak" type="button" title="Ascolta la domanda" aria-label="Ascolta la domanda">🔊</button>
+      </div>
+
+      <div id="verbChip" class="verbchip hidden"></div>
+
+      <div id="mcq" class="choices"></div>
+
+      <div id="open" class="hidden">
+        <input id="openInput" type="text" placeholder="Scrivi qui…" />
+        <div class="actions" style="margin-top:10px">
+          <button class="btn primary" id="checkOpen">Verifica</button>
+          <button class="btn" id="showHint">Suggerimento</button>
+        </div>
+        <div class="muted" id="openHint" style="margin-top:8px"></div>
+      </div>
+
+      <div id="fb" class="feedback"></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="skipBtn">Salta</button>
+      <button class="btn" id="prevBtn">Indietro</button>
+      <button class="btn primary" id="nextBtn">Avanti</button>
+    </div>
+  </section>
+
+  <!-- RESULT -->
+  <section class="card hidden" id="result">
+    <div class="quizHead">
+      <div>
+        <h2>Risultato</h2>
+        <div id="resultSummary" class="big"></div>
+      </div>
+      <div class="pill" id="gradePill">Voto: -</div>
+    </div>
+
+    <div class="card" style="margin-top:10px">
+      <strong>Competenze</strong>
+      <div id="resultSkills" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card" style="margin-top:10px">
+      <strong>Codice risultato</strong>
+      <textarea id="shareCode" rows="3" spellcheck="false"></textarea>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn" id="copyCode">Copia</button>
+        <button class="btn" id="exportPDF">Stampa</button>
+        <button class="btn primary" id="backHome">Torna</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section class="card hidden" id="dashboard">
+    <h2>Progressi</h2>
+    <div class="grid">
+      <div class="card">
+        <strong>Competenze</strong>
+        <div id="dashSkills" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <strong>Verbi</strong>
+        <div id="dashVerbs" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <strong>Aggettivi</strong>
+        <div id="dashAdjs" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <strong>Oggetti</strong>
+        <div id="dashObjs" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <strong>Storico</strong>
+        <div id="history" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="exportProgress">Esporta progressi</button>
+      <button class="btn danger" id="resetProgress">Azzera</button>
+    </div>
+  </section>
+
+  <!-- CLASSE (realtime) -->
+  <section class="card hidden" id="teacher">
+    <h2>Classe 1GL1-GL2</h2>
+    <div class="pill" id="classCount">—</div>
+    <div class="muted" style="margin-top:8px">Online/offline e ultimo accesso.</div>
+    <div id="classList" style="margin-top:10px"></div>
+
+    <!-- elementi legacy (nascosti) -->
+    <textarea id="importBox" class="hidden"></textarea>
+    <button id="importBtn" class="hidden"></button>
+    <button id="exportClass" class="hidden"></button>
+    <button id="clearClass" class="hidden"></button>
+  </section>
+
+  <div id="toast" class="toast hidden"></div>
+</main>
+
+<!-- Firebase compat (per realtime database) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+<script src="quiz.js?v=20260117-tts-profile" defer></script>
+</body>
+</html>
